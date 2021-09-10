@@ -1,17 +1,19 @@
-proxy_cache_path /tmp/nginx levels=1:2 keys_zone=STATIC:30m inactive=15m max_size=10g;
-proxy_cache_key "$request_method$request_uri";
-
 map $sent_http_etag $kibana_cache_control {
   default "";
-  ~.+  public,max-age=240000;
+  ~.+  public,max-age=604800,immutable;
 }
-
-
 
 upstream kibana {
     server host.docker.internal:5601;
-    keepalive 15;
+    keepalive 100;
 }
+
+map $sent_http_content_type $expires {
+    default                    off;
+    ~image                     604800;
+    ~application               604800;
+}
+
 
 # HTTP
 
@@ -19,21 +21,9 @@ server {
 
   listen 8882;
   listen [::]:8882;
-
+  expires $expires;
   location / {
-    proxy_pass http://kibana/;
-
-    access_log   /var/log/nginx/access.log rt_cache;
-    proxy_buffering        on;
-    proxy_cache            STATIC;
-    proxy_cache_methods GET HEAD POST;
-    proxy_cache_revalidate on;
-    proxy_cache_valid      200  30m;
-    proxy_cache_use_stale  error timeout invalid_header updating
-                            http_500 http_502 http_503 http_504;
-
-    add_header X-Cache-Status $upstream_cache_status;
-
+    proxy_pass http://kibana;
 
     proxy_http_version 1.1;
     proxy_request_buffering off;
@@ -44,10 +34,8 @@ server {
     proxy_set_header   X-Forwarded-Proto $scheme;
     proxy_set_header   X-Forwarded-Host $host;
 
-
     proxy_hide_header "Cache-Control";
     add_header "Cache-Control" $kibana_cache_control;
 
   }
-
 }
